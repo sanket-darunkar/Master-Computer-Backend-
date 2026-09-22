@@ -1,0 +1,41 @@
+# ============================================================
+# .dockerignore – files excluded from the Docker build context
+#
+# Keeping the context small speeds up `docker build` and prevents
+# accidentally sending secrets or compiled artifacts to the daemon.
+# ============================================================
+
+# --- Secrets – NEVER send to the Docker daemon ---------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.pfx
+
+# --- Maven build output (rebuilt inside the container) -------
+target/
+
+# --- IDE and OS noise ----------------------------------------
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# --- Git internals (not needed in the image) -----------------
+.git/
+.gitignore
+
+# --- Documentation (not needed at runtime) -------------------
+README.md
+*.md
+
+# --- Local Docker artifacts ----------------------------------
+Dockerfile
+.dockerignore
