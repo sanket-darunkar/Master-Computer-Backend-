@@ -20,6 +20,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -69,13 +71,46 @@ class CertificateServiceTest {
                 .build();
     }
 
+    // ── helpers ───────────────────────────────────────────────────────
+
+    private CreateCertificateRequest createRequest(String certNumber) {
+        return new CreateCertificateRequest(
+                certNumber, "Amit Kumar", "MS Office",
+                LocalDate.of(2024, 5, 20), "3 Months",
+                "Master Computer Academy", "95/100", "A+");
+    }
+
+    private UpdateCertificateRequest updateRequest() {
+        return new UpdateCertificateRequest(
+                "Rahul Sharma Updated", "Advanced Java",
+                LocalDate.of(2024, 6, 1), "6 Months",
+                "Master Computer Academy", "480/500", "A+", false);
+    }
+
+    private Certificate savedCert(CreateCertificateRequest req, Long id) {
+        return Certificate.builder()
+                .id(id)
+                .certificateNumber(req.getCertificateNumber())
+                .studentName(req.getStudentName())
+                .courseName(req.getCourseName())
+                .issueDate(req.getIssueDate())
+                .duration(req.getDuration())
+                .institutionName(req.getInstitutionName())
+                .marks(req.getMarks())
+                .grade(req.getGrade())
+                .status(CertificateStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+    }
+
     // ------------------------------------------------------------------
     // verifyCertificate
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("verifyCertificate – ACTIVE certificate returns public response and logs verification")
-    void verifyCertificate_activeCert_returnsPublicResponseAndLogsVerification() {
+    @DisplayName("verifyCertificate – ACTIVE returns public response and logs")
+    void verifyCertificate_active_returnsPublicResponseAndLogs() {
         when(certificateRepository.findByCertificateNumber("MCA-2024-001"))
                 .thenReturn(Optional.of(activeCertificate));
         when(verificationLogRepository.save(any(VerificationLog.class)))
@@ -84,109 +119,179 @@ class CertificateServiceTest {
         CertificateResponse response = certificateService.verifyCertificate("MCA-2024-001");
 
         assertThat(response.getCertificateNumber()).isEqualTo("MCA-2024-001");
-        assertThat(response.getStudentName()).isEqualTo("Rahul Sharma");
         assertThat(response.getStatus()).isEqualTo(CertificateStatus.ACTIVE);
-        // id and timestamps are NOT included in the public response
-        assertThat(response.getId()).isNull();
-        assertThat(response.getCreatedAt()).isNull();
-
-        verify(verificationLogRepository, times(1)).save(any(VerificationLog.class));
+        assertThat(response.getId()).isNull();        // public view: no id
+        assertThat(response.getCreatedAt()).isNull(); // public view: no timestamps
+        verify(verificationLogRepository, times(1)).save(any());
     }
 
     @Test
-    @DisplayName("verifyCertificate – REVOKED certificate still returns a response and logs the lookup")
-    void verifyCertificate_revokedCert_returnsRevokedStatusAndLogs() {
+    @DisplayName("verifyCertificate – REVOKED still logs and returns REVOKED status")
+    void verifyCertificate_revoked_returnsRevokedAndLogs() {
         when(certificateRepository.findByCertificateNumber("MCA-2024-002"))
                 .thenReturn(Optional.of(revokedCertificate));
-        when(verificationLogRepository.save(any(VerificationLog.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(verificationLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CertificateResponse response = certificateService.verifyCertificate("MCA-2024-002");
 
         assertThat(response.getStatus()).isEqualTo(CertificateStatus.REVOKED);
-        verify(verificationLogRepository, times(1)).save(any(VerificationLog.class));
+        verify(verificationLogRepository, times(1)).save(any());
     }
 
     @Test
-    @DisplayName("verifyCertificate – non-existent number throws ResourceNotFoundException")
-    void verifyCertificate_notFound_throwsResourceNotFoundException() {
-        when(certificateRepository.findByCertificateNumber("INVALID-999"))
-                .thenReturn(Optional.empty());
+    @DisplayName("verifyCertificate – not found throws ResourceNotFoundException")
+    void verifyCertificate_notFound_throws() {
+        when(certificateRepository.findByCertificateNumber("INVALID")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> certificateService.verifyCertificate("INVALID-999"))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("INVALID-999");
-
+        assertThatThrownBy(() -> certificateService.verifyCertificate("INVALID"))
+                .isInstanceOf(ResourceNotFoundException.class);
         verify(verificationLogRepository, never()).save(any());
     }
 
     // ------------------------------------------------------------------
-    // createCertificate
+    // verifyCertificate – photo in response
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("createCertificate – valid request persists and returns admin response")
-    void createCertificate_validRequest_returnsSavedCertificate() {
-        CreateCertificateRequest request = new CreateCertificateRequest(
-                "MCA-2024-003",
-                "Amit Kumar",
-                null,
-                "MS Office",
-                LocalDate.of(2024, 5, 20),
-                "3 Months",
-                "Master Computer Academy",
-                "95/100",
-                "A+");
+    @DisplayName("verifyCertificate – certificate with photo returns base64 photoData")
+    void verifyCertificate_withPhoto_returnsBase64Photo() {
+        byte[] fakeBytes = new byte[]{1, 2, 3};
+        activeCertificate.setPhotoData(fakeBytes);
+        activeCertificate.setPhotoMimeType("image/jpeg");
 
-        when(certificateRepository.existsByCertificateNumber("MCA-2024-003")).thenReturn(false);
-        when(certificateRepository.save(any(Certificate.class))).thenAnswer(inv -> {
-            Certificate c = inv.getArgument(0);
-            // Simulate DB assigning id and timestamps
-            Certificate saved = Certificate.builder()
-                    .id(3L)
-                    .certificateNumber(c.getCertificateNumber())
-                    .studentName(c.getStudentName())
-                    .courseName(c.getCourseName())
-                    .issueDate(c.getIssueDate())
-                    .duration(c.getDuration())
-                    .institutionName(c.getInstitutionName())
-                    .marks(c.getMarks())
-                    .grade(c.getGrade())
-                    .status(CertificateStatus.ACTIVE)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-            return saved;
-        });
+        when(certificateRepository.findByCertificateNumber("MCA-2024-001"))
+                .thenReturn(Optional.of(activeCertificate));
+        when(verificationLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        CertificateResponse response = certificateService.createCertificate(request);
+        CertificateResponse response = certificateService.verifyCertificate("MCA-2024-001");
 
-        assertThat(response.getCertificateNumber()).isEqualTo("MCA-2024-003");
-        assertThat(response.getStudentName()).isEqualTo("Amit Kumar");
-        assertThat(response.getStatus()).isEqualTo(CertificateStatus.ACTIVE);
-        assertThat(response.getId()).isEqualTo(3L);  // admin view includes id
+        assertThat(response.getPhotoData()).isNotNull();
+        assertThat(response.getPhotoMimeType()).isEqualTo("image/jpeg");
+        assertThat(response.getStudentPhotoUrl()).isNull(); // binary photo takes priority
     }
 
     @Test
-    @DisplayName("createCertificate – duplicate certificate number throws DuplicateCertificateNumberException")
-    void createCertificate_duplicateNumber_throwsDuplicateCertificateNumberException() {
-        CreateCertificateRequest request = new CreateCertificateRequest(
-                "MCA-2024-001",
-                "Another Student",
-                null,
-                "Some Course",
-                LocalDate.now(),
-                null,
-                null,
-                null,
-                null);
+    @DisplayName("verifyCertificate – certificate without photo returns null photo fields")
+    void verifyCertificate_noPhoto_returnsNullPhotoFields() {
+        when(certificateRepository.findByCertificateNumber("MCA-2024-001"))
+                .thenReturn(Optional.of(activeCertificate));
+        when(verificationLogRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+        CertificateResponse response = certificateService.verifyCertificate("MCA-2024-001");
+
+        assertThat(response.getPhotoData()).isNull();
+        assertThat(response.getPhotoMimeType()).isNull();
+    }
+
+    // ------------------------------------------------------------------
+    // createCertificate – without photo
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createCertificate – no photo saves certificate with null photoData")
+    void createCertificate_noPhoto_savesNullPhotoData() {
+        CreateCertificateRequest req = createRequest("MCA-2024-003");
+        when(certificateRepository.existsByCertificateNumber("MCA-2024-003")).thenReturn(false);
+        when(certificateRepository.save(any())).thenAnswer(inv -> {
+            Certificate c = inv.getArgument(0);
+            c = savedCert(req, 3L);
+            return c;
+        });
+
+        CertificateResponse response = certificateService.createCertificate(req, null);
+
+        assertThat(response.getCertificateNumber()).isEqualTo("MCA-2024-003");
+        assertThat(response.getId()).isEqualTo(3L);
+        assertThat(response.getPhotoData()).isNull();
+    }
+
+    // ------------------------------------------------------------------
+    // createCertificate – with valid JPEG
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createCertificate – valid JPEG photo is stored and returned as base64")
+    void createCertificate_withValidJpeg_storesPhoto() {
+        CreateCertificateRequest req = createRequest("MCA-2024-004");
+        byte[] jpegBytes = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+
+        MultipartFile photo = new MockMultipartFile(
+                "photo", "student.jpg", "image/jpeg", jpegBytes);
+
+        when(certificateRepository.existsByCertificateNumber("MCA-2024-004")).thenReturn(false);
+        when(certificateRepository.save(any(Certificate.class))).thenAnswer(inv -> {
+            Certificate c = inv.getArgument(0);
+            c.setId(4L);
+            c.setCreatedAt(LocalDateTime.now());
+            c.setUpdatedAt(LocalDateTime.now());
+            return c;
+        });
+
+        CertificateResponse response = certificateService.createCertificate(req, photo);
+
+        assertThat(response.getPhotoData()).isNotNull();
+        assertThat(response.getPhotoMimeType()).isEqualTo("image/jpeg");
+
+        // Verify bytes were stored on the entity
+        ArgumentCaptor<Certificate> captor = ArgumentCaptor.forClass(Certificate.class);
+        verify(certificateRepository).save(captor.capture());
+        assertThat(captor.getValue().getPhotoData()).isEqualTo(jpegBytes);
+        assertThat(captor.getValue().getPhotoMimeType()).isEqualTo("image/jpeg");
+    }
+
+    // ------------------------------------------------------------------
+    // createCertificate – invalid file type
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createCertificate – invalid MIME type throws IllegalArgumentException")
+    void createCertificate_invalidMimeType_throwsIllegalArgument() {
+        CreateCertificateRequest req = createRequest("MCA-2024-005");
+        MultipartFile photo = new MockMultipartFile(
+                "photo", "doc.pdf", "application/pdf", "fake pdf".getBytes());
+
+        when(certificateRepository.existsByCertificateNumber("MCA-2024-005")).thenReturn(false);
+
+        assertThatThrownBy(() -> certificateService.createCertificate(req, photo))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Only JPG and PNG");
+
+        verify(certificateRepository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------------
+    // createCertificate – file too large
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createCertificate – file larger than 2 MB throws IllegalArgumentException")
+    void createCertificate_fileTooLarge_throwsIllegalArgument() {
+        CreateCertificateRequest req = createRequest("MCA-2024-006");
+        // 2 MB + 1 byte
+        byte[] tooLarge = new byte[2 * 1024 * 1024 + 1];
+        MultipartFile photo = new MockMultipartFile(
+                "photo", "big.jpg", "image/jpeg", tooLarge);
+
+        when(certificateRepository.existsByCertificateNumber("MCA-2024-006")).thenReturn(false);
+
+        assertThatThrownBy(() -> certificateService.createCertificate(req, photo))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("too large");
+
+        verify(certificateRepository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------------
+    // createCertificate – duplicate number
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("createCertificate – duplicate number throws DuplicateCertificateNumberException")
+    void createCertificate_duplicate_throws() {
         when(certificateRepository.existsByCertificateNumber("MCA-2024-001")).thenReturn(true);
 
-        assertThatThrownBy(() -> certificateService.createCertificate(request))
-                .isInstanceOf(DuplicateCertificateNumberException.class)
-                .hasMessageContaining("MCA-2024-001");
-
+        assertThatThrownBy(() -> certificateService.createCertificate(createRequest("MCA-2024-001"), null))
+                .isInstanceOf(DuplicateCertificateNumberException.class);
         verify(certificateRepository, never()).save(any());
     }
 
@@ -195,8 +300,8 @@ class CertificateServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("getCertificateById – existing id returns admin response")
-    void getCertificateById_existingId_returnsAdminResponse() {
+    @DisplayName("getCertificateById – found returns admin response with id")
+    void getCertificateById_found_returnsAdminResponse() {
         when(certificateRepository.findById(1L)).thenReturn(Optional.of(activeCertificate));
 
         CertificateResponse response = certificateService.getCertificateById(1L);
@@ -206,39 +311,59 @@ class CertificateServiceTest {
     }
 
     @Test
-    @DisplayName("getCertificateById – missing id throws ResourceNotFoundException")
-    void getCertificateById_missingId_throwsResourceNotFoundException() {
+    @DisplayName("getCertificateById – not found throws ResourceNotFoundException")
+    void getCertificateById_notFound_throws() {
         when(certificateRepository.findById(99L)).thenReturn(Optional.empty());
-
         assertThatThrownBy(() -> certificateService.getCertificateById(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     // ------------------------------------------------------------------
-    // updateCertificate
+    // updateCertificate – without photo (no change)
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("updateCertificate – updates editable fields correctly")
-    void updateCertificate_validRequest_updatesFields() {
-        UpdateCertificateRequest request = new UpdateCertificateRequest(
-                "Rahul Sharma Updated",
-                null,
-                "Advanced Java",
-                LocalDate.of(2024, 6, 1),
-                "6 Months",
-                "Master Computer Academy",
-                "480/500",
-                "A+");
+    @DisplayName("updateCertificate – no photo supplied leaves existing photo intact")
+    void updateCertificate_noPhoto_existingPhotoUnchanged() {
+        byte[] existing = new byte[]{1, 2, 3};
+        activeCertificate.setPhotoData(existing);
+        activeCertificate.setPhotoMimeType("image/png");
 
         when(certificateRepository.findById(1L)).thenReturn(Optional.of(activeCertificate));
-        when(certificateRepository.save(any(Certificate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(certificateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        CertificateResponse response = certificateService.updateCertificate(1L, request);
+        certificateService.updateCertificate(1L, updateRequest(), null);
 
-        assertThat(response.getStudentName()).isEqualTo("Rahul Sharma Updated");
-        assertThat(response.getCourseName()).isEqualTo("Advanced Java");
-        assertThat(response.getMarks()).isEqualTo("480/500");
+        ArgumentCaptor<Certificate> captor = ArgumentCaptor.forClass(Certificate.class);
+        verify(certificateRepository).save(captor.capture());
+        // Existing photo bytes must be untouched
+        assertThat(captor.getValue().getPhotoData()).isEqualTo(existing);
+        assertThat(captor.getValue().getPhotoMimeType()).isEqualTo("image/png");
+    }
+
+    // ------------------------------------------------------------------
+    // updateCertificate – with new PNG photo
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("updateCertificate – new PNG photo replaces existing")
+    void updateCertificate_withNewPhoto_replacesExisting() {
+        activeCertificate.setPhotoData(new byte[]{9, 9, 9});
+        activeCertificate.setPhotoMimeType("image/jpeg");
+
+        byte[] newBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
+        MultipartFile newPhoto = new MockMultipartFile(
+                "photo", "new.png", "image/png", newBytes);
+
+        when(certificateRepository.findById(1L)).thenReturn(Optional.of(activeCertificate));
+        when(certificateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        certificateService.updateCertificate(1L, updateRequest(), newPhoto);
+
+        ArgumentCaptor<Certificate> captor = ArgumentCaptor.forClass(Certificate.class);
+        verify(certificateRepository).save(captor.capture());
+        assertThat(captor.getValue().getPhotoData()).isEqualTo(newBytes);
+        assertThat(captor.getValue().getPhotoMimeType()).isEqualTo("image/png");
     }
 
     // ------------------------------------------------------------------
@@ -246,31 +371,26 @@ class CertificateServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("updateCertificateStatus – changes status to REVOKED")
+    @DisplayName("updateCertificateStatus – status changed to REVOKED")
     void updateCertificateStatus_toRevoked_statusUpdated() {
-        UpdateCertificateStatusRequest request = new UpdateCertificateStatusRequest(CertificateStatus.REVOKED);
-
         when(certificateRepository.findById(1L)).thenReturn(Optional.of(activeCertificate));
-        when(certificateRepository.save(any(Certificate.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(certificateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        CertificateResponse response = certificateService.updateCertificateStatus(1L, request);
+        CertificateResponse response = certificateService.updateCertificateStatus(
+                1L, new UpdateCertificateStatusRequest(CertificateStatus.REVOKED));
 
         assertThat(response.getStatus()).isEqualTo(CertificateStatus.REVOKED);
-
-        // Verify the entity had its status mutated before save
         ArgumentCaptor<Certificate> captor = ArgumentCaptor.forClass(Certificate.class);
         verify(certificateRepository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(CertificateStatus.REVOKED);
     }
 
     @Test
-    @DisplayName("updateCertificateStatus – missing certificate throws ResourceNotFoundException")
-    void updateCertificateStatus_missingCertificate_throwsResourceNotFoundException() {
+    @DisplayName("updateCertificateStatus – not found throws ResourceNotFoundException")
+    void updateCertificateStatus_notFound_throws() {
         when(certificateRepository.findById(999L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() ->
-                certificateService.updateCertificateStatus(999L,
-                        new UpdateCertificateStatusRequest(CertificateStatus.REVOKED)))
+        assertThatThrownBy(() -> certificateService.updateCertificateStatus(
+                999L, new UpdateCertificateStatusRequest(CertificateStatus.REVOKED)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }

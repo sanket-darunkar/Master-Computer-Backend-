@@ -11,21 +11,25 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
+/**
+ * Text fields for updating a certificate.
+ * Sent as multipart/form-data alongside an optional photo file part.
+ * The photo file is handled separately via @RequestPart in the controller.
+ *
+ * removePhoto=true explicitly clears any existing stored photo.
+ * If a new photo file is supplied, it replaces the existing one regardless.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Request body to update an existing certificate")
+@Schema(description = "Request fields to update a certificate (multipart form)")
 public class UpdateCertificateRequest {
 
     @NotBlank(message = "Student name is required")
     @Size(max = 255, message = "Student name must not exceed 255 characters")
     @Schema(description = "Full name of the student", example = "Rahul Sharma")
     private String studentName;
-
-    @Size(max = 1024, message = "Photo URL must not exceed 1024 characters")
-    @Schema(description = "URL of the student's photo (optional)")
-    private String studentPhotoUrl;
 
     @NotBlank(message = "Course name is required")
     @Size(max = 255, message = "Course name must not exceed 255 characters")
@@ -51,4 +55,12 @@ public class UpdateCertificateRequest {
     @Size(max = 10, message = "Grade must not exceed 10 characters")
     @Schema(description = "Grade awarded", example = "A+")
     private String grade;
+
+    /**
+     * When true, explicitly removes the existing stored photo without replacing it.
+     * Ignored when a new photo file part is included in the same request.
+     */
+    @Schema(description = "Set true to remove the existing photo without uploading a new one",
+            example = "false")
+    private boolean removePhoto = false;
 }

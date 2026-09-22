@@ -11,11 +11,18 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
+/**
+ * Text fields for creating a certificate.
+ * Sent as multipart/form-data alongside an optional photo file part.
+ * The photo file is handled separately via @RequestPart in the controller.
+ *
+ * studentPhotoUrl has been removed – photos are now uploaded as files.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Request body to create a new certificate")
+@Schema(description = "Request fields to create a new certificate (multipart form)")
 public class CreateCertificateRequest {
 
     @NotBlank(message = "Certificate number is required")
@@ -27,10 +34,6 @@ public class CreateCertificateRequest {
     @Size(max = 255, message = "Student name must not exceed 255 characters")
     @Schema(description = "Full name of the student", example = "Rahul Sharma")
     private String studentName;
-
-    @Size(max = 1024, message = "Photo URL must not exceed 1024 characters")
-    @Schema(description = "URL of the student's photo (optional)", example = "https://storage.example.com/photos/rahul.jpg")
-    private String studentPhotoUrl;
 
     @NotBlank(message = "Course name is required")
     @Size(max = 255, message = "Course name must not exceed 255 characters")

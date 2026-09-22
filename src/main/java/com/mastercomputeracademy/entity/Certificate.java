@@ -57,6 +57,23 @@ public class Certificate {
     @Column(name = "student_photo_url", length = 1024)
     private String studentPhotoUrl;
 
+    /**
+     * Raw binary bytes of the uploaded student photo.
+     * Stored as BYTEA in PostgreSQL via JPA @Lob.
+     * Null when no photo has been uploaded.
+     * Max 2 MB enforced at the service layer.
+     */
+    @Lob
+    @Column(name = "photo_data", columnDefinition = "BYTEA")
+    private byte[] photoData;
+
+    /**
+     * MIME type of the uploaded photo, e.g. "image/jpeg" or "image/png".
+     * Always set when photoData is non-null.
+     */
+    @Column(name = "photo_mime_type", length = 20)
+    private String photoMimeType;
+
     @NotBlank
     @Column(name = "course_name", nullable = false, length = 255)
     private String courseName;

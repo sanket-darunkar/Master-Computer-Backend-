@@ -55,6 +55,31 @@ public class GlobalExceptionHandler {
     }
 
     // ------------------------------------------------------------------
+    // Photo upload validation (size, type, extension)
+    // ------------------------------------------------------------------
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.debug("Photo/input validation error: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // ------------------------------------------------------------------
+    // Multipart size exceeded (Spring throws MaxUploadSizeExceededException)
+    // ------------------------------------------------------------------
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        log.debug("Upload too large: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Photo file is too large. Maximum allowed size is 2 MB."));
+    }
+
+    // ------------------------------------------------------------------
     // Validation exceptions
     // ------------------------------------------------------------------
 

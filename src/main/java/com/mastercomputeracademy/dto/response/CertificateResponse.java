@@ -11,19 +11,26 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Base64;
 
 /**
- * Safe public-facing certificate response.
+ * Safe certificate response DTO.
  *
- * Fields intentionally EXCLUDED:
- *   - database id (not exposed to the public)
- *   - student phone / email / address
- *   - payment information
- *   - admin data
- *   - any internal fields
+ * Photo strategy:
+ *   - photoData     – Base64-encoded bytes of the uploaded photo (data URL prefix
+ *                     NOT included; the frontend constructs it with photoMimeType).
+ *                     Null when no uploaded photo exists.
+ *   - photoMimeType – e.g. "image/jpeg", "image/png". Null when photoData is null.
+ *   - studentPhotoUrl – legacy URL field kept for backward compatibility.
+ *                       Null when the certificate was created with a file upload.
  *
- * The admin variant includes id and timestamps via the static factory
- * {@link #fromEntityForAdmin(Certificate)}.
+ * The public factory method exposes photoData so the verification page can
+ * display the photo. The admin factory method additionally includes id and timestamps.
+ *
+ * Fields intentionally EXCLUDED from both views:
+ *   - raw photoData bytes at the entity level (converted to Base64 String here)
+ *   - database internals
+ *   - admin passwords / JWT secrets
  */
 @Getter
 @NoArgsConstructor
@@ -42,8 +49,26 @@ public class CertificateResponse {
     @Schema(description = "Full name of the student", example = "Rahul Sharma")
     private String studentName;
 
-    @Schema(description = "URL of the student photo", example = "https://storage.example.com/photos/rahul.jpg")
+    /**
+     * Legacy URL-based photo. Retained for backward compatibility with
+     * certificates that were created before file-upload support was added.
+     * Null when the certificate uses the new photoData approach.
+     */
+    @Schema(description = "Legacy URL of the student photo (null when photoData is present)")
     private String studentPhotoUrl;
+
+    /**
+     * Base64-encoded bytes of the uploaded student photo.
+     * Use together with photoMimeType to construct a data URL:
+     *   src={`data:${photoMimeType};base64,${photoData}`}
+     * Null when no photo has been uploaded via file upload.
+     */
+    @Schema(description = "Base64-encoded student photo bytes (null if no uploaded photo)")
+    private String photoData;
+
+    /** MIME type of the uploaded photo, e.g. "image/jpeg". */
+    @Schema(description = "MIME type of the uploaded photo", example = "image/jpeg")
+    private String photoMimeType;
 
     @Schema(description = "Name of the course", example = "Diploma in Computer Application")
     private String courseName;
@@ -78,32 +103,33 @@ public class CertificateResponse {
 
     /**
      * Public-safe view: exposes only what is needed for certificate verification.
+     * Includes photo (as base64) so the verification page can display it.
      * Does NOT include id or timestamps.
      */
     public static CertificateResponse fromEntityForPublic(Certificate cert) {
-        return CertificateResponse.builder()
+        CertificateResponseBuilder b = CertificateResponse.builder()
                 .certificateNumber(cert.getCertificateNumber())
                 .studentName(cert.getStudentName())
-                .studentPhotoUrl(cert.getStudentPhotoUrl())
                 .courseName(cert.getCourseName())
                 .issueDate(cert.getIssueDate())
                 .duration(cert.getDuration())
                 .institutionName(cert.getInstitutionName())
                 .marks(cert.getMarks())
                 .grade(cert.getGrade())
-                .status(cert.getStatus())
-                .build();
+                .status(cert.getStatus());
+
+        applyPhoto(b, cert);
+        return b.build();
     }
 
     /**
      * Admin view: includes id and audit timestamps.
      */
     public static CertificateResponse fromEntityForAdmin(Certificate cert) {
-        return CertificateResponse.builder()
+        CertificateResponseBuilder b = CertificateResponse.builder()
                 .id(cert.getId())
                 .certificateNumber(cert.getCertificateNumber())
                 .studentName(cert.getStudentName())
-                .studentPhotoUrl(cert.getStudentPhotoUrl())
                 .courseName(cert.getCourseName())
                 .issueDate(cert.getIssueDate())
                 .duration(cert.getDuration())
@@ -112,7 +138,30 @@ public class CertificateResponse {
                 .grade(cert.getGrade())
                 .status(cert.getStatus())
                 .createdAt(cert.getCreatedAt())
-                .updatedAt(cert.getUpdatedAt())
-                .build();
+                .updatedAt(cert.getUpdatedAt());
+
+        applyPhoto(b, cert);
+        return b.build();
+    }
+
+    // ------------------------------------------------------------------
+    // Internal helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Applies photo fields to the builder.
+     * Priority: uploaded binary data > legacy URL.
+     * If photoData bytes are present, they are Base64-encoded and placed in
+     * the photoData field alongside photoMimeType. The legacy studentPhotoUrl
+     * field is only populated when no binary photo exists.
+     */
+    private static void applyPhoto(CertificateResponseBuilder b, Certificate cert) {
+        if (cert.getPhotoData() != null && cert.getPhotoData().length > 0) {
+            b.photoData(Base64.getEncoder().encodeToString(cert.getPhotoData()));
+            b.photoMimeType(cert.getPhotoMimeType());
+        } else if (cert.getStudentPhotoUrl() != null && !cert.getStudentPhotoUrl().isBlank()) {
+            b.studentPhotoUrl(cert.getStudentPhotoUrl());
+        }
+        // else: both null — no photo fields set; @JsonInclude(NON_NULL) omits them
     }
 }
