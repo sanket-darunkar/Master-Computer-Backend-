@@ -14,7 +14,7 @@ Phone: 9156348591
 1. [Project Overview](#1-project-overview)
 2. [Tech Stack](#2-tech-stack)
 3. [Requirements](#3-requirements)
-4. [MySQL Setup](#4-mysql-setup)
+4. [PostgreSQL Setup](#4-postgresql-setup)
 5. [Environment Variables](#5-environment-variables)
 6. [How to Run Locally](#6-how-to-run-locally)
 7. [API Endpoints](#7-api-endpoints)
@@ -49,12 +49,12 @@ The architecture is ready for QR code verification: QR codes on printed certific
 | Spring Security | 6.2.x |
 | Spring Data JPA | 3.2.x |
 | Hibernate | 6.4.x |
-| MySQL Connector/J | 8.3.0 |
+| PostgreSQL Driver (JDBC) | 42.7.x (via Spring Boot BOM) |
 | JJWT (JWT) | 0.12.5 |
 | SpringDoc OpenAPI / Swagger UI | 2.5.0 |
 | Lombok | via Spring Boot BOM |
 | Maven | 3.9.x |
-| Test DB | H2 (in-memory, `MODE=MySQL`) |
+| Test DB | H2 (in-memory, `MODE=PostgreSQL`) |
 
 ---
 
@@ -62,26 +62,37 @@ The architecture is ready for QR code verification: QR codes on printed certific
 
 - **Java 17+** (Java 21 also works)
 - **Maven 3.8+**
-- **MySQL 8.0+** (for dev/prod; tests use H2)
+- **PostgreSQL 15+** (for local dev/prod; tests use H2 in-memory)
 - A terminal and your favourite HTTP client (curl, Postman, Bruno, etc.)
 
 ---
 
-## 4. MySQL Setup
+## 4. PostgreSQL Setup
+
+### Local development
 
 ```sql
--- Run these commands in your MySQL client once
-CREATE DATABASE mca_cert_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- Run these commands in your PostgreSQL client (psql) once
+CREATE DATABASE mca_cert_dev;
 
--- Create a dedicated user (recommended — don't use root in production)
-CREATE USER 'mca_user'@'localhost' IDENTIFIED BY 'StrongPassword@123';
-GRANT ALL PRIVILEGES ON mca_cert_dev.* TO 'mca_user'@'localhost';
-FLUSH PRIVILEGES;
+-- Create a dedicated user (recommended — don't use the superuser in production)
+CREATE USER mca_user WITH PASSWORD 'StrongPassword@123';
+GRANT ALL PRIVILEGES ON DATABASE mca_cert_dev TO mca_user;
+-- PostgreSQL 15+ requires this additional grant:
+\c mca_cert_dev
+GRANT ALL ON SCHEMA public TO mca_user;
 ```
 
 Hibernate will create all tables automatically on first startup (`ddl-auto=update` in dev).
 
-For **production**, create the production database the same way (different name), set `SPRING_PROFILES_ACTIVE=prod`, and use a proper schema migration tool like Flyway.
+### Production — Neon PostgreSQL
+
+1. Create a free project at [neon.tech](https://neon.tech).
+2. Copy the **connection string** from the Neon dashboard (Connection Details → JDBC).
+3. It looks like: `jdbc:postgresql://<host>.neon.tech/<dbname>?sslmode=require`
+4. Set it as the `DB_URL` environment variable on Render.
+
+For **production**, set `SPRING_PROFILES_ACTIVE=prod` and use a proper schema migration tool like Flyway.
 
 ---
 
@@ -93,8 +104,8 @@ Copy `.env.example` to `.env` — **never commit `.env` to version control**.
 |---|---|---|---|
 | `SPRING_PROFILES_ACTIVE` | No | Active profile: `dev` or `prod` | `dev` |
 | `SERVER_PORT` | No | HTTP port | `8080` |
-| `DB_URL` | Yes | JDBC connection string | `jdbc:mysql://localhost:3306/mca_cert_dev?useSSL=false&serverTimezone=Asia/Kolkata&allowPublicKeyRetrieval=true` |
-| `DB_USERNAME` | Yes | Database user | `root` |
+| `DB_URL` | Yes | JDBC connection string | `jdbc:postgresql://localhost:5432/mca_cert_dev` |
+| `DB_USERNAME` | Yes | Database user | `postgres` |
 | `DB_PASSWORD` | Yes | Database password | *(empty)* |
 | `JWT_SECRET` | **Yes** | Base64-encoded 256-bit HMAC secret | — |
 | `JWT_EXPIRATION_MS` | No | Token lifetime in milliseconds | `86400000` (24 h) |
@@ -122,7 +133,7 @@ git clone <repo-url>
 cd master-computer-academy-backend
 
 # 2. Set environment variables (one-time)
-export DB_URL="jdbc:mysql://localhost:3306/mca_cert_dev?useSSL=false&serverTimezone=Asia/Kolkata&allowPublicKeyRetrieval=true"
+export DB_URL="jdbc:postgresql://localhost:5432/mca_cert_dev"
 export DB_USERNAME="mca_user"
 export DB_PASSWORD="StrongPassword@123"
 export JWT_SECRET="$(openssl rand -base64 32)"
@@ -478,18 +489,18 @@ The system uses **stateless JWT authentication** (no sessions, no cookies).
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | BIGINT PK AUTO_INCREMENT | |
+| `id` | BIGINT PK (auto-generated) | |
 | `email` | VARCHAR(255) UNIQUE NOT NULL | Indexed |
 | `password` | VARCHAR(255) NOT NULL | BCrypt hash |
 | `role` | VARCHAR(20) NOT NULL | `ADMIN` |
-| `created_at` | DATETIME NOT NULL | JPA Auditing |
-| `updated_at` | DATETIME NOT NULL | JPA Auditing |
+| `created_at` | TIMESTAMP NOT NULL | JPA Auditing |
+| `updated_at` | TIMESTAMP NOT NULL | JPA Auditing |
 
 ### `certificates`
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | BIGINT PK AUTO_INCREMENT | |
+| `id` | BIGINT PK (auto-generated) | |
 | `certificate_number` | VARCHAR(100) UNIQUE NOT NULL | Indexed — primary lookup key |
 | `student_name` | VARCHAR(255) NOT NULL | Indexed |
 | `student_photo_url` | VARCHAR(1024) | External URL |
@@ -500,16 +511,16 @@ The system uses **stateless JWT authentication** (no sessions, no cookies).
 | `marks` | VARCHAR(50) | e.g. "450/500" |
 | `grade` | VARCHAR(10) | e.g. "A+" |
 | `status` | VARCHAR(20) NOT NULL | `ACTIVE` / `REVOKED` / `PENDING`. Indexed |
-| `created_at` | DATETIME NOT NULL | JPA Auditing |
-| `updated_at` | DATETIME NOT NULL | JPA Auditing |
+| `created_at` | TIMESTAMP NOT NULL | JPA Auditing |
+| `updated_at` | TIMESTAMP NOT NULL | JPA Auditing |
 
 ### `verification_logs`
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | BIGINT PK AUTO_INCREMENT | |
+| `id` | BIGINT PK (auto-generated) | |
 | `certificate_id` | BIGINT NOT NULL FK → `certificates.id` | Indexed |
-| `verified_at` | DATETIME NOT NULL | Indexed |
+| `verified_at` | TIMESTAMP NOT NULL | Indexed |
 
 No visitor PII (IP, email, name, phone) is stored — only which certificate was checked and when.
 
@@ -529,7 +540,7 @@ Certificate  (1) ────── (N)  VerificationLog
 mvn clean test
 ```
 
-Tests run against an **H2 in-memory database** (`MODE=MySQL`) — no MySQL instance needed.
+Tests run against an **H2 in-memory database** (`MODE=PostgreSQL`) — no PostgreSQL instance needed.
 
 ### Test results
 
@@ -563,7 +574,7 @@ mvn test -Dtest=CertificateServiceTest
 
 - [ ] Set `SPRING_PROFILES_ACTIVE=prod`
 - [ ] Generate a strong `JWT_SECRET` (`openssl rand -base64 32`)
-- [ ] Use a dedicated MySQL user with only the permissions it needs
+- [ ] Use a dedicated PostgreSQL user with only the permissions it needs
 - [ ] Set `CORS_ALLOWED_ORIGIN` to your actual frontend domain (e.g. `https://www.mastercomputeracademy.com`)
 - [ ] Change the seed admin password and consider disabling the `AdminSeeder` entirely
 - [ ] Disable Swagger (`springdoc.swagger-ui.enabled=false` is already set in the prod profile)
@@ -578,7 +589,7 @@ The prod profile uses `spring.jpa.hibernate.ddl-auto=validate` — Hibernate wil
 <!-- Add to pom.xml -->
 <dependency>
     <groupId>org.flywaydb</groupId>
-    <artifactId>flyway-mysql</artifactId>
+    <artifactId>flyway-database-postgresql</artifactId>
 </dependency>
 ```
 
@@ -606,4 +617,4 @@ The prod profile logs at `INFO` level. For production, route logs to a centralis
 
 ---
 
-*Built with Spring Boot 3.2.5 · Java 17 · MySQL 8*
+*Built with Spring Boot 3.2.5 · Java 17 · PostgreSQL (Neon)*
