@@ -100,9 +100,10 @@ public class CertificateServiceImpl implements CertificateService {
     public PagedResponse<CertificateResponse> getCertificates(
             int page, int size, String search, CertificateStatus status, String course) {
 
-        // Normalise empty strings to null so the JPQL :param IS NULL check works
-        String searchParam = (search  != null && !search.isBlank())  ? search.trim()  : null;
-        String courseParam = (course  != null && !course.isBlank())  ? course.trim()  : null;
+        // Normalise null/blank to empty string — the query uses :search = '' to mean "no filter".
+        // Never pass null for string params on PostgreSQL: it causes lower(bytea) type errors.
+        String searchParam = (search != null && !search.isBlank()) ? search.trim() : "";
+        String courseParam = (course != null && !course.isBlank()) ? course.trim() : "";
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 

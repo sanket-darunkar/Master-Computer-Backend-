@@ -31,12 +31,12 @@ public interface CertificateRepository extends JpaRepository<Certificate, Long> 
 
     @Query("""
             SELECT c FROM Certificate c
-            WHERE (:search IS NULL OR
+            WHERE (:search = '' OR
                    LOWER(c.certificateNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(c.studentName)       LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(c.courseName)        LIKE LOWER(CONCAT('%', :search, '%')))
-              AND (:status IS NULL OR c.status = :status)
-              AND (:course IS NULL OR LOWER(c.courseName) LIKE LOWER(CONCAT('%', :course, '%')))
+              AND (:#{#status == null ? 'ALL' : #status.name()} = 'ALL' OR CAST(c.status AS string) = :#{#status == null ? 'ALL' : #status.name()})
+              AND (:course = '' OR LOWER(c.courseName) LIKE LOWER(CONCAT('%', :course, '%')))
             """)
     Page<Certificate> searchCertificates(
             @Param("search") String search,
