@@ -29,7 +29,7 @@
 # OpenJDK distribution recommended for production containers.
 # We use the JDK image here (needed to run Maven + javac).
 # ──────────────────────────────────────────────────────────
-FROM eclipse-temurin:17-jdk-jammy AS builder
+FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /workspace
 
