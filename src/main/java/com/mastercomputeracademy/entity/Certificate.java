@@ -2,8 +2,7 @@ package com.mastercomputeracademy.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
+import jakarta.validation.constraints.NotNull;import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -59,11 +58,13 @@ public class Certificate {
 
     /**
      * Raw binary bytes of the uploaded student photo.
-     * Stored as BYTEA in PostgreSQL via JPA @Lob.
+     * Stored as BYTEA in PostgreSQL.
+     * @Lob is intentionally NOT used — Hibernate 6 maps @Lob byte[] to PostgreSQL
+     * OID (Large Object), which is incompatible with BYTEA columns.
+     * Without @Lob, byte[] maps correctly to BYTEA.
      * Null when no photo has been uploaded.
      * Max 2 MB enforced at the service layer.
      */
-    @Lob
     @Column(name = "photo_data", columnDefinition = "BYTEA")
     private byte[] photoData;
 
