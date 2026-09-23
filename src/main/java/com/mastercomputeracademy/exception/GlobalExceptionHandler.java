@@ -55,6 +55,19 @@ public class GlobalExceptionHandler {
     }
 
     // ------------------------------------------------------------------
+    // Static resource not found (e.g. frontend calling a non-existent endpoint)
+    // ------------------------------------------------------------------
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        log.debug("Resource not found: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Endpoint not found: " + ex.getResourcePath()));
+    }
+
+    // ------------------------------------------------------------------
     // Photo upload validation (size, type, extension)
     // ------------------------------------------------------------------
 
