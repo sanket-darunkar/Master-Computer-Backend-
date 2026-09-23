@@ -46,6 +46,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(DuplicateStudentIdException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateStudentId(DuplicateStudentIdException ex) {
+        log.debug("Duplicate student ID: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
         log.warn("Failed login attempt: {}", ex.getMessage());
