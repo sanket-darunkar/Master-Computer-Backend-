@@ -161,8 +161,11 @@ public class Student {
 
     // ── Photo ─────────────────────────────────────────────────────────────
 
-    /** Raw bytes of the student passport photo. Max 2 MB enforced at service layer. */
-    @Lob
+    /**
+     * Raw bytes of the student passport photo. Max 2 MB enforced at service layer.
+     * NOTE: @Lob intentionally NOT used — Hibernate 6 maps @Lob byte[] to PostgreSQL
+     * OID which is incompatible with BYTEA. Without @Lob, byte[] maps to BYTEA correctly.
+     */
     @Column(name = "photo_data", columnDefinition = "BYTEA")
     private byte[] photoData;
 
