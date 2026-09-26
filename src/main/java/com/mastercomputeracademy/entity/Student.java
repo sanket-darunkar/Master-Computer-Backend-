@@ -12,7 +12,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Represents a student enrolled at Master Computer Academy.
@@ -177,10 +179,66 @@ public class Student {
      * Values: "Exam Form Submitted" | "Exam Form Pending" (or null = not set).
      * Kept as VARCHAR rather than an enum so new values can be added without a
      * schema migration.
+     * Reflects the overall/legacy status — Submitted only when ALL courses are
+     * Submitted; otherwise Pending. Kept in sync by the service layer.
      */
     @Column(name = "exam_form", length = 50)
     @Builder.Default
     private String examForm = "Exam Form Pending";
+
+    /**
+     * Per-course exam form statuses.
+     *
+     * Stored in DB as key=value pairs delimited by '|':
+     *   "DCA=Exam Form Submitted|Tally ERP 9=Exam Form Pending"
+     *
+     * The map key is the course name; the value is the status string.
+     * Insertion order is preserved (LinkedHashMap) so the order in the
+     * response matches the order the courses were enrolled.
+     *
+     * Kept in sync with {@link #courses} by the service layer:
+     *   - New courses added → default status "Exam Form Pending"
+     *   - Courses removed  → their entry is dropped
+     *   - Single-course students also get an entry here
+     */
+    @Convert(converter = CourseExamStatusConverter.class)
+    @Column(name = "course_exam_statuses", length = 2000)
+    @Builder.Default
+    private Map<String, String> courseExamStatuses = new LinkedHashMap<>();
+
+    // ── Per-course helpers ────────────────────────────────────────────────
+
+    /** Returns the exam form status for a specific course, defaulting to Pending. */
+    public String getExamFormForCourse(String courseName) {
+        if (courseExamStatuses == null || courseName == null) return "Exam Form Pending";
+        return courseExamStatuses.getOrDefault(courseName, "Exam Form Pending");
+    }
+
+    /**
+     * Sets the exam form status for a single course without touching others.
+     * After calling this, callers should also call {@link #syncLegacyExamForm()}
+     * to keep the legacy field consistent.
+     */
+    public void setExamFormForCourse(String courseName, String status) {
+        if (courseExamStatuses == null) courseExamStatuses = new LinkedHashMap<>();
+        if (courseName != null && status != null) courseExamStatuses.put(courseName, status);
+    }
+
+    /**
+     * Re-derives the legacy {@code exam_form} from the per-course map.
+     * Result is "Exam Form Submitted" only when EVERY course is Submitted;
+     * otherwise "Exam Form Pending".
+     * Call this after any modification to {@link #courseExamStatuses}.
+     */
+    public void syncLegacyExamForm() {
+        if (courseExamStatuses == null || courseExamStatuses.isEmpty()) {
+            // No per-course data — leave legacy field as-is
+            return;
+        }
+        boolean allSubmitted = courseExamStatuses.values().stream()
+                .allMatch("Exam Form Submitted"::equals);
+        this.examForm = allSubmitted ? "Exam Form Submitted" : "Exam Form Pending";
+    }
 
     // ── Photo ─────────────────────────────────────────────────────────────
 
@@ -214,7 +272,7 @@ public class Student {
         DROPPED
     }
 
-    // ── JPA converter ─────────────────────────────────────────────────────
+    // ── JPA converters ────────────────────────────────────────────────────
 
     /**
      * Converts List<String> ↔ pipe-delimited VARCHAR for the courses_list column.
@@ -239,6 +297,53 @@ public class Student {
             List<String> result = new ArrayList<>();
             for (String s : dbValue.split("\\|", -1)) {
                 if (!s.isBlank()) result.add(s);
+            }
+            return result;
+        }
+    }
+
+    /**
+     * Converts Map<String,String> ↔ pipe-delimited key=value VARCHAR
+     * for the course_exam_statuses column.
+     *
+     * Format:  "DCA=Exam Form Submitted|Tally ERP 9=Exam Form Pending"
+     * Empty map → NULL.
+     *
+     * Encoding notes:
+     *   - Course names may contain spaces but must not contain '|' or '='
+     *     (enforced at application layer through the course name list).
+     *   - On read, any entry that is malformed (no '=') is silently skipped.
+     */
+    @Converter
+    public static class CourseExamStatusConverter
+            implements AttributeConverter<Map<String, String>, String> {
+
+        private static final String ENTRY_DELIM = "|";
+        private static final String KV_DELIM    = "=";
+        // Only first '=' is the KV separator; value may not contain '='
+        private static final int    KV_LIMIT    = 2;
+
+        @Override
+        public String convertToDatabaseColumn(Map<String, String> map) {
+            if (map == null || map.isEmpty()) return null;
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, String> e : map.entrySet()) {
+                if (sb.length() > 0) sb.append(ENTRY_DELIM);
+                sb.append(e.getKey()).append(KV_DELIM).append(e.getValue());
+            }
+            return sb.toString();
+        }
+
+        @Override
+        public Map<String, String> convertToEntityAttribute(String dbValue) {
+            Map<String, String> result = new LinkedHashMap<>();
+            if (dbValue == null || dbValue.isBlank()) return result;
+            for (String entry : dbValue.split("\\|", -1)) {
+                if (entry.isBlank()) continue;
+                String[] parts = entry.split(KV_DELIM, KV_LIMIT);
+                if (parts.length == KV_LIMIT && !parts[0].isBlank()) {
+                    result.put(parts[0], parts[1]);
+                }
             }
             return result;
         }

@@ -24,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -84,6 +87,10 @@ public class StudentServiceImpl implements StudentService {
                 .status(StudentStatus.ACTIVE)
                 .examForm("Exam Form Pending")
                 .build();
+
+        // Initialise per-course exam statuses — every course starts as Pending
+        student.setCourseExamStatuses(
+                buildInitialExamStatuses(student.getCourses()));
 
         applyPhoto(student, photo);
 
@@ -154,7 +161,13 @@ public class StudentServiceImpl implements StudentService {
         student.setQualification(request.getQualification());
         student.setCategory(request.getCategory());
         student.setCourse(request.getCourse());
-        student.setCourses(normaliseCourses(request.getCourses(), request.getCourse()));
+        List<String> newCourses = normaliseCourses(request.getCourses(), request.getCourse());
+        student.setCourses(newCourses);
+        // Reconcile per-course exam statuses: preserve existing statuses for
+        // courses that remain; add Pending for newly added courses; drop removed ones.
+        student.setCourseExamStatuses(
+                reconcileExamStatuses(student.getCourseExamStatuses(), newCourses));
+        student.syncLegacyExamForm();
         student.setAdmissionDate(request.getAdmissionDate());
         student.setCourseDuration(request.getCourseDuration());
         student.setBatchTime(request.getBatchTime());
@@ -167,8 +180,12 @@ public class StudentServiceImpl implements StudentService {
         if (request.getStatus() != null) {
             student.setStatus(request.getStatus());
         }
+        // examForm from the edit form (global override, only if explicitly set)
         if (request.getExamForm() != null && !request.getExamForm().isBlank()) {
-            student.setExamForm(request.getExamForm());
+            // Apply to all courses in the map, then sync legacy field
+            newCourses.forEach(c ->
+                    student.setExamFormForCourse(c, request.getExamForm()));
+            student.syncLegacyExamForm();
         }
 
         // Only replace photo if a new file was uploaded
@@ -182,17 +199,43 @@ public class StudentServiceImpl implements StudentService {
     }
 
     // ------------------------------------------------------------------
-    // Status change (exam form)
+    // Status change (exam form) — per-course or global
     // ------------------------------------------------------------------
 
     @Override
     @Transactional
     public StudentResponse updateStudentStatus(Long id, UpdateStudentStatusRequest request) {
-        log.debug("Updating student examForm id={} to {}", id, request.getExamForm());
         Student student = findById(id);
-        student.setExamForm(request.getExamForm());
+        String newStatus  = request.getExamForm();
+        String courseName = (request.getCourseName() != null && !request.getCourseName().isBlank())
+                ? request.getCourseName().trim()
+                : null;
+
+        if (courseName != null) {
+            // ── Per-course update ──────────────────────────────────────
+            // Validate the course actually belongs to this student
+            List<String> enrolled = student.getCourses();
+            if (enrolled == null || !enrolled.contains(courseName)) {
+                throw new ResourceNotFoundException(
+                        "Course '" + courseName + "' is not enrolled for student id=" + id);
+            }
+            student.setExamFormForCourse(courseName, newStatus);
+            log.info("Per-course examForm updated: studentId={}, course={}, status={}",
+                    id, courseName, newStatus);
+        } else {
+            // ── Global update (backward compat) ────────────────────────
+            // Apply status to every enrolled course
+            List<String> enrolled = student.getCourses();
+            if (enrolled != null && !enrolled.isEmpty()) {
+                enrolled.forEach(c -> student.setExamFormForCourse(c, newStatus));
+            }
+            log.info("Global examForm updated: studentId={}, status={}", id, newStatus);
+        }
+
+        // Keep the legacy single field in sync
+        student.syncLegacyExamForm();
+
         Student saved = studentRepository.save(student);
-        log.info("Student examForm updated: id={}, examForm={}", saved.getId(), saved.getExamForm());
         return StudentResponse.fromEntity(saved);
     }
 
@@ -280,14 +323,52 @@ public class StudentServiceImpl implements StudentService {
      * Otherwise fall back to wrapping the single course string.
      * Always returns a mutable, non-null list.
      */
-    private java.util.List<String> normaliseCourses(
-            java.util.List<String> courses, String course) {
+    private List<String> normaliseCourses(List<String> courses, String course) {
         if (courses != null && !courses.isEmpty()) {
             return new java.util.ArrayList<>(courses);
         }
         if (course != null && !course.isBlank()) {
-            return new java.util.ArrayList<>(java.util.List.of(course));
+            return new java.util.ArrayList<>(List.of(course));
         }
         return new java.util.ArrayList<>();
+    }
+
+    /**
+     * Builds a fresh courseExamStatuses map for a newly created student.
+     * Every course starts with "Exam Form Pending".
+     */
+    private Map<String, String> buildInitialExamStatuses(List<String> courses) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (courses != null) {
+            courses.forEach(c -> map.put(c, "Exam Form Pending"));
+        }
+        return map;
+    }
+
+    /**
+     * Reconciles the existing per-course exam statuses when a student's
+     * course list is edited.
+     *
+     * Rules:
+     *   – Course retained: keep its existing status unchanged.
+     *   – Course added:    initialise to "Exam Form Pending".
+     *   – Course removed:  drop its entry silently.
+     *
+     * @param existing  the current courseExamStatuses map (may be null/empty)
+     * @param newCourses the updated list of enrolled courses
+     * @return a new LinkedHashMap with order matching newCourses
+     */
+    private Map<String, String> reconcileExamStatuses(
+            Map<String, String> existing, List<String> newCourses) {
+
+        Map<String, String> result = new LinkedHashMap<>();
+        if (newCourses == null) return result;
+        for (String course : newCourses) {
+            String status = (existing != null && existing.containsKey(course))
+                    ? existing.get(course)
+                    : "Exam Form Pending";
+            result.put(course, status);
+        }
+        return result;
     }
 }

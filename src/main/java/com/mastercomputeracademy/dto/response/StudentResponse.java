@@ -11,18 +11,22 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Student response DTO.
+ * Student record returned to admin callers.
  *
- * Photo is returned as both:
- *   studentPhotoUrl – a ready-to-use data: URI (used directly by the frontend)
- *   photoData       – Base64-encoded bytes  (kept for backward compat)
+ * Photo:
+ *   studentPhotoUrl – ready-to-use data: URI (used directly as img src)
+ *   photoData       – Base64 bytes (backward compat)
  *   photoMimeType   – e.g. "image/jpeg"
  *
- * courses  – full multi-select list (e.g. ["DCA", "Tally"])
- * course   – first element of courses (backward compat with older code)
- * examForm – free-text exam form status ("Exam Form Submitted" | "Exam Form Pending")
+ * Courses / exam status:
+ *   courses              – full multi-select list  e.g. ["DCA","Tally"]
+ *   course               – first element (backward compat)
+ *   courseExamStatuses   – per-course map  e.g. {"DCA":"Exam Form Submitted","Tally":"Exam Form Pending"}
+ *   examForm             – legacy overall status derived from courseExamStatuses
+ *                          ("Exam Form Submitted" only when ALL courses are submitted)
  */
 @Getter @NoArgsConstructor @AllArgsConstructor @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -57,7 +61,7 @@ public class StudentResponse {
 
     /** Multi-select list of enrolled courses. */
     private List<String> courses;
-    /** First enrolled course — backward compatibility with older consumers. */
+    /** First enrolled course — backward compatibility. */
     private String course;
 
     private LocalDate admissionDate;
@@ -73,20 +77,28 @@ public class StudentResponse {
     private StudentStatus status;
 
     /**
-     * Exam form submission status.
-     * Values: "Exam Form Submitted" | "Exam Form Pending"
+     * Per-course exam form statuses.
+     * Key = course name, Value = "Exam Form Submitted" | "Exam Form Pending".
+     * e.g. {"DCA": "Exam Form Submitted", "Tally ERP 9": "Exam Form Pending"}
+     */
+    @Schema(description = "Per-course exam form status map")
+    private Map<String, String> courseExamStatuses;
+
+    /**
+     * Overall / legacy exam form status.
+     * "Exam Form Submitted" only when ALL enrolled courses are submitted;
+     * otherwise "Exam Form Pending".
+     * Kept for backward compatibility with older frontend consumers.
      */
     private String examForm;
 
     /**
      * Ready-to-use data: URI for the student photo.
-     * Format: "data:{mimeType};base64,{bytes}"
      * Null when no photo has been uploaded.
-     * Used directly as an img src by the frontend.
      */
     private String studentPhotoUrl;
 
-    /** Base64-encoded photo bytes (kept for backward compat). */
+    /** Base64-encoded photo bytes (backward compat). */
     private String photoData;
     /** MIME type of the uploaded photo, e.g. "image/jpeg". */
     private String photoMimeType;
@@ -132,6 +144,10 @@ public class StudentResponse {
                 .receiptDate(s.getReceiptDate())
                 .notes(s.getNotes())
                 .status(s.getStatus())
+                .courseExamStatuses(
+                        s.getCourseExamStatuses() != null && !s.getCourseExamStatuses().isEmpty()
+                                ? s.getCourseExamStatuses()
+                                : null)
                 .examForm(s.getExamForm())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt());
@@ -141,7 +157,6 @@ public class StudentResponse {
             String mime   = s.getPhotoMimeType();
             b.photoData(base64);
             b.photoMimeType(mime);
-            // Ready-to-use data URI — the frontend sets this directly as img src
             b.studentPhotoUrl("data:" + mime + ";base64," + base64);
         }
 
