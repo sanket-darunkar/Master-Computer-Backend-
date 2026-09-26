@@ -78,6 +78,8 @@ public class SecurityConfig {
                 // Public endpoints – no token required
                 .requestMatchers(HttpMethod.GET,  "/api/health").permitAll()
                 .requestMatchers(HttpMethod.GET,  "/api/certificates/verify/**").permitAll()
+                // Student self-service portal – public lookup by studentId + mobile
+                .requestMatchers(HttpMethod.GET,  "/api/students/lookup").permitAll()
                 // Admin auth – open (login does not require a token)
                 .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                 // Swagger / OpenAPI docs

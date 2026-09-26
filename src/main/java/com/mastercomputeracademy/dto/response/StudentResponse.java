@@ -10,19 +10,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Student response DTO.
  *
- * Photo is returned as:
- *   photoData     – Base64-encoded bytes
- *   photoMimeType – e.g. "image/jpeg"
+ * Photo is returned as both:
+ *   studentPhotoUrl – a ready-to-use data: URI (used directly by the frontend)
+ *   photoData       – Base64-encoded bytes  (kept for backward compat)
+ *   photoMimeType   – e.g. "image/jpeg"
  *
- * The frontend constructs the img src as:
- *   `data:${photoMimeType};base64,${photoData}`
- *
- * Fields intentionally excluded: raw photoData bytes (converted here),
- * any internal DB constraints.
+ * courses  – full multi-select list (e.g. ["DCA", "Tally"])
+ * course   – first element of courses (backward compat with older code)
+ * examForm – free-text exam form status ("Exam Form Submitted" | "Exam Form Pending")
  */
 @Getter @NoArgsConstructor @AllArgsConstructor @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -55,7 +55,11 @@ public class StudentResponse {
     private String qualification;
     private String category;
 
+    /** Multi-select list of enrolled courses. */
+    private List<String> courses;
+    /** First enrolled course — backward compatibility with older consumers. */
     private String course;
+
     private LocalDate admissionDate;
     private String courseDuration;
     private String batchTime;
@@ -68,7 +72,21 @@ public class StudentResponse {
     private String notes;
     private StudentStatus status;
 
-    /** Base64-encoded photo bytes. Null when no photo has been uploaded. */
+    /**
+     * Exam form submission status.
+     * Values: "Exam Form Submitted" | "Exam Form Pending"
+     */
+    private String examForm;
+
+    /**
+     * Ready-to-use data: URI for the student photo.
+     * Format: "data:{mimeType};base64,{bytes}"
+     * Null when no photo has been uploaded.
+     * Used directly as an img src by the frontend.
+     */
+    private String studentPhotoUrl;
+
+    /** Base64-encoded photo bytes (kept for backward compat). */
     private String photoData;
     /** MIME type of the uploaded photo, e.g. "image/jpeg". */
     private String photoMimeType;
@@ -103,6 +121,7 @@ public class StudentResponse {
                 .pinCode(s.getPinCode())
                 .qualification(s.getQualification())
                 .category(s.getCategory())
+                .courses(s.getCourses())
                 .course(s.getCourse())
                 .admissionDate(s.getAdmissionDate())
                 .courseDuration(s.getCourseDuration())
@@ -113,12 +132,17 @@ public class StudentResponse {
                 .receiptDate(s.getReceiptDate())
                 .notes(s.getNotes())
                 .status(s.getStatus())
+                .examForm(s.getExamForm())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt());
 
         if (s.getPhotoData() != null && s.getPhotoData().length > 0) {
-            b.photoData(Base64.getEncoder().encodeToString(s.getPhotoData()));
-            b.photoMimeType(s.getPhotoMimeType());
+            String base64 = Base64.getEncoder().encodeToString(s.getPhotoData());
+            String mime   = s.getPhotoMimeType();
+            b.photoData(base64);
+            b.photoMimeType(mime);
+            // Ready-to-use data URI — the frontend sets this directly as img src
+            b.studentPhotoUrl("data:" + mime + ";base64," + base64);
         }
 
         return b.build();

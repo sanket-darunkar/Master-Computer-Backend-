@@ -11,6 +11,8 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Represents a student enrolled at Master Computer Academy.
@@ -123,6 +125,17 @@ public class Student {
     @Column(name = "course", nullable = false, length = 255)
     private String course;
 
+    /**
+     * All courses the student is enrolled in (multi-select from the UI).
+     * Stored as a pipe-delimited string in the DB column courses_list.
+     * The legacy single-value {@link #course} field is kept for backward
+     * compatibility and is always set to courses.get(0) by the service.
+     */
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "courses_list", length = 2000)
+    @Builder.Default
+    private List<String> courses = new ArrayList<>();
+
     @NotNull
     @Column(name = "admission_date", nullable = false)
     private LocalDate admissionDate;
@@ -159,6 +172,16 @@ public class Student {
     @Builder.Default
     private StudentStatus status = StudentStatus.ACTIVE;
 
+    /**
+     * Exam form submission status as a free-text label set by the admin.
+     * Values: "Exam Form Submitted" | "Exam Form Pending" (or null = not set).
+     * Kept as VARCHAR rather than an enum so new values can be added without a
+     * schema migration.
+     */
+    @Column(name = "exam_form", length = 50)
+    @Builder.Default
+    private String examForm = "Exam Form Pending";
+
     // ── Photo ─────────────────────────────────────────────────────────────
 
     /**
@@ -189,5 +212,35 @@ public class Student {
         INACTIVE,
         COMPLETED,
         DROPPED
+    }
+
+    // ── JPA converter ─────────────────────────────────────────────────────
+
+    /**
+     * Converts List<String> ↔ pipe-delimited VARCHAR for the courses_list column.
+     * e.g. ["DCA", "Tally"] ↔ "DCA|Tally"
+     * An empty list is stored as NULL.
+     */
+    @Converter
+    public static class StringListConverter
+            implements AttributeConverter<List<String>, String> {
+
+        private static final String DELIM = "|";
+
+        @Override
+        public String convertToDatabaseColumn(List<String> list) {
+            if (list == null || list.isEmpty()) return null;
+            return String.join(DELIM, list);
+        }
+
+        @Override
+        public List<String> convertToEntityAttribute(String dbValue) {
+            if (dbValue == null || dbValue.isBlank()) return new ArrayList<>();
+            List<String> result = new ArrayList<>();
+            for (String s : dbValue.split("\\|", -1)) {
+                if (!s.isBlank()) result.add(s);
+            }
+            return result;
+        }
     }
 }

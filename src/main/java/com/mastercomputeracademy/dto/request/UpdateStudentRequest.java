@@ -9,6 +9,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Text fields for updating an existing student record.
@@ -83,6 +84,9 @@ public class UpdateStudentRequest {
     @Size(max = 255)
     private String course;
 
+    /** Multi-select list of enrolled courses sent by the frontend form. */
+    private List<String> courses;
+
     @NotNull(message = "Admission date is required")
     private LocalDate admissionDate;
 
@@ -105,4 +109,8 @@ public class UpdateStudentRequest {
 
     /** Status change included in the full edit form. */
     private StudentStatus status;
+
+    /** Exam form status — updated inline via the edit form. */
+    @Size(max = 50)
+    private String examForm;
 }

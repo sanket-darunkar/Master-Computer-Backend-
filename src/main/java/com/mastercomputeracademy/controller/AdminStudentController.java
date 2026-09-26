@@ -6,7 +6,6 @@ import com.mastercomputeracademy.dto.request.UpdateStudentStatusRequest;
 import com.mastercomputeracademy.dto.response.ApiResponse;
 import com.mastercomputeracademy.dto.response.PagedResponse;
 import com.mastercomputeracademy.dto.response.StudentResponse;
-import com.mastercomputeracademy.entity.Student.StudentStatus;
 import com.mastercomputeracademy.service.StudentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -78,7 +77,7 @@ public class AdminStudentController {
     @GetMapping
     @Operation(
         summary = "List students",
-        description = "Returns paginated students. Optionally filter by search term, status, or course."
+        description = "Returns paginated students. Optionally filter by search term, examForm status, or course."
     )
     public ResponseEntity<ApiResponse<PagedResponse<StudentResponse>>> getStudents(
             @RequestParam(defaultValue = "0")  int page,
@@ -86,7 +85,7 @@ public class AdminStudentController {
             @RequestParam(required = false)
             @Parameter(description = "Search across student ID, first name, surname, mobile") String search,
             @RequestParam(required = false)
-            @Parameter(description = "ACTIVE | INACTIVE | COMPLETED | DROPPED") StudentStatus status,
+            @Parameter(description = "Exam Form Submitted | Exam Form Pending") String status,
             @RequestParam(required = false)
             @Parameter(description = "Course name (partial match)") String course) {
 

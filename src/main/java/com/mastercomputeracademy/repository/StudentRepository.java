@@ -1,7 +1,6 @@
 package com.mastercomputeracademy.repository;
 
 import com.mastercomputeracademy.entity.Student;
-import com.mastercomputeracademy.entity.Student.StudentStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,7 +19,12 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
 
     /**
      * Paginated search across studentId, firstName, surname, and ownMobile.
-     * All filter parameters are optional — pass empty string / null to skip.
+     *
+     * examFormFilter – exact match on the examForm field
+     *   ('Exam Form Submitted' | 'Exam Form Pending').
+     *   Pass empty string to skip filtering.
+     *
+     * All filter parameters are optional — pass empty string to skip.
      * Uses database-level LIKE; never loads the full table into memory.
      */
     @Query("""
@@ -30,13 +34,12 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
                    LOWER(s.firstName)  LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(s.surname)    LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(s.ownMobile)  LIKE LOWER(CONCAT('%', :search, '%')))
-              AND (:#{#status == null ? 'ALL' : #status.name()} = 'ALL'
-                   OR CAST(s.status AS string) = :#{#status == null ? 'ALL' : #status.name()})
+              AND (:examFormFilter = '' OR s.examForm = :examFormFilter)
               AND (:course = '' OR LOWER(s.course) LIKE LOWER(CONCAT('%', :course, '%')))
             """)
     Page<Student> searchStudents(
-            @Param("search") String search,
-            @Param("status") StudentStatus status,
-            @Param("course") String course,
+            @Param("search")          String search,
+            @Param("examFormFilter")  String examFormFilter,
+            @Param("course")          String course,
             Pageable pageable);
 }

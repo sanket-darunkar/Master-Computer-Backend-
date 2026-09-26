@@ -8,6 +8,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Text fields for creating a new student admission record.
@@ -85,6 +86,9 @@ public class CreateStudentRequest {
     @NotBlank(message = "Course is required")
     @Size(max = 255)
     private String course;
+
+    /** Multi-select list of enrolled courses sent by the frontend form. */
+    private List<String> courses;
 
     @NotNull(message = "Admission date is required")
     private LocalDate admissionDate;

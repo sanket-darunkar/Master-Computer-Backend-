@@ -4,9 +4,11 @@ import com.mastercomputeracademy.dto.request.CreateStudentRequest;
 import com.mastercomputeracademy.dto.request.UpdateStudentRequest;
 import com.mastercomputeracademy.dto.request.UpdateStudentStatusRequest;
 import com.mastercomputeracademy.dto.response.PagedResponse;
+import com.mastercomputeracademy.dto.response.PublicStudentResponse;
 import com.mastercomputeracademy.dto.response.StudentResponse;
 import com.mastercomputeracademy.entity.Student;
 import com.mastercomputeracademy.entity.Student.StudentStatus;
+import com.mastercomputeracademy.exception.BadCredentialsException;
 import com.mastercomputeracademy.exception.DuplicateStudentIdException;
 import com.mastercomputeracademy.exception.ResourceNotFoundException;
 import com.mastercomputeracademy.repository.StudentRepository;
@@ -70,6 +72,7 @@ public class StudentServiceImpl implements StudentService {
                 .qualification(request.getQualification())
                 .category(request.getCategory())
                 .course(request.getCourse())
+                .courses(normaliseCourses(request.getCourses(), request.getCourse()))
                 .admissionDate(request.getAdmissionDate())
                 .courseDuration(request.getCourseDuration())
                 .batchTime(request.getBatchTime())
@@ -79,6 +82,7 @@ public class StudentServiceImpl implements StudentService {
                 .receiptDate(request.getReceiptDate())
                 .notes(request.getNotes())
                 .status(StudentStatus.ACTIVE)
+                .examForm("Exam Form Pending")
                 .build();
 
         applyPhoto(student, photo);
@@ -95,16 +99,17 @@ public class StudentServiceImpl implements StudentService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<StudentResponse> getStudents(
-            int page, int size, String search, StudentStatus status, String course) {
+            int page, int size, String search, String examFormFilter, String course) {
 
-        String searchParam = (search != null && !search.isBlank()) ? search.trim() : "";
-        String courseParam = (course != null && !course.isBlank()) ? course.trim() : "";
+        String searchParam    = (search          != null && !search.isBlank())          ? search.trim()          : "";
+        String examFormParam  = (examFormFilter   != null && !examFormFilter.isBlank())  ? examFormFilter.trim()  : "";
+        String courseParam    = (course           != null && !course.isBlank())          ? course.trim()          : "";
 
         Pageable pageable = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<Student> resultPage = studentRepository
-                .searchStudents(searchParam, status, courseParam, pageable);
+                .searchStudents(searchParam, examFormParam, courseParam, pageable);
 
         return PagedResponse.from(resultPage.map(StudentResponse::fromEntity));
     }
@@ -149,6 +154,7 @@ public class StudentServiceImpl implements StudentService {
         student.setQualification(request.getQualification());
         student.setCategory(request.getCategory());
         student.setCourse(request.getCourse());
+        student.setCourses(normaliseCourses(request.getCourses(), request.getCourse()));
         student.setAdmissionDate(request.getAdmissionDate());
         student.setCourseDuration(request.getCourseDuration());
         student.setBatchTime(request.getBatchTime());
@@ -160,6 +166,9 @@ public class StudentServiceImpl implements StudentService {
 
         if (request.getStatus() != null) {
             student.setStatus(request.getStatus());
+        }
+        if (request.getExamForm() != null && !request.getExamForm().isBlank()) {
+            student.setExamForm(request.getExamForm());
         }
 
         // Only replace photo if a new file was uploaded
@@ -173,18 +182,47 @@ public class StudentServiceImpl implements StudentService {
     }
 
     // ------------------------------------------------------------------
-    // Status change
+    // Status change (exam form)
     // ------------------------------------------------------------------
 
     @Override
     @Transactional
     public StudentResponse updateStudentStatus(Long id, UpdateStudentStatusRequest request) {
-        log.debug("Updating student status id={} to {}", id, request.getStatus());
+        log.debug("Updating student examForm id={} to {}", id, request.getExamForm());
         Student student = findById(id);
-        student.setStatus(request.getStatus());
+        student.setExamForm(request.getExamForm());
         Student saved = studentRepository.save(student);
-        log.info("Student status updated: id={}, status={}", saved.getId(), saved.getStatus());
+        log.info("Student examForm updated: id={}, examForm={}", saved.getId(), saved.getExamForm());
         return StudentResponse.fromEntity(saved);
+    }
+
+    // ------------------------------------------------------------------
+    // Public lookup (no auth – mobile used as second factor)
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional(readOnly = true)
+    public PublicStudentResponse lookupStudentByStudentId(String studentId, String mobile) {
+        log.debug("Public lookup: studentId={}", studentId);
+
+        Student student = studentRepository.findByStudentId(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No student found with ID: " + studentId));
+
+        // Verify the supplied mobile matches either registered number.
+        // Normalise both sides: strip leading/trailing spaces.
+        String supplied = mobile == null ? "" : mobile.trim();
+        boolean mobileMatches =
+                (student.getOwnMobile()   != null && student.getOwnMobile().trim().equals(supplied)) ||
+                (student.getOtherMobile() != null && student.getOtherMobile().trim().equals(supplied));
+
+        if (!mobileMatches) {
+            // Intentionally vague — do not reveal which field failed
+            throw new BadCredentialsException(
+                    "Student ID and Mobile Number do not match. Please check and try again.");
+        }
+
+        return PublicStudentResponse.fromEntity(student);
     }
 
     // ------------------------------------------------------------------
@@ -234,5 +272,22 @@ public class StudentServiceImpl implements StudentService {
         return studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Student not found with id: " + id));
+    }
+
+    /**
+     * Ensures the courses list is always populated.
+     * If the frontend sends a non-empty courses[], use that.
+     * Otherwise fall back to wrapping the single course string.
+     * Always returns a mutable, non-null list.
+     */
+    private java.util.List<String> normaliseCourses(
+            java.util.List<String> courses, String course) {
+        if (courses != null && !courses.isEmpty()) {
+            return new java.util.ArrayList<>(courses);
+        }
+        if (course != null && !course.isBlank()) {
+            return new java.util.ArrayList<>(java.util.List.of(course));
+        }
+        return new java.util.ArrayList<>();
     }
 }
