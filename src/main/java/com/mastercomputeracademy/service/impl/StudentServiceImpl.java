@@ -180,12 +180,14 @@ public class StudentServiceImpl implements StudentService {
         if (request.getStatus() != null) {
             student.setStatus(request.getStatus());
         }
-        // examForm from the edit form (global override, only if explicitly set)
+        // NOTE: The edit form no longer drives per-course exam statuses.
+        // Per-course status is managed exclusively via PATCH /{id}/status
+        // from AdminStudentDetail. We only update the legacy examForm field
+        // here so the edit form's dropdown still reads/writes correctly for
+        // students that haven't migrated to per-course tracking yet.
         if (request.getExamForm() != null && !request.getExamForm().isBlank()) {
-            // Apply to all courses in the map, then sync legacy field
-            newCourses.forEach(c ->
-                    student.setExamFormForCourse(c, request.getExamForm()));
-            student.syncLegacyExamForm();
+            student.setExamForm(request.getExamForm());
+            // Do NOT call setExamFormForCourse — that would overwrite all courses.
         }
 
         // Only replace photo if a new file was uploaded
