@@ -6,28 +6,30 @@ import com.mastercomputeracademy.entity.Student.StudentStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.List;
 
 /**
- * Student data returned from the public /api/students/lookup endpoint.
+ * Student data returned from the public POST /api/students/lookup endpoint.
  *
- * Intentionally omits PII that has no business being exposed publicly:
+ * Intentionally omits high-sensitivity PII:
  *   – Aadhaar number
- *   – Mobile numbers
- *   – Address (houseNo, street, city, tahsil, district, pinCode)
- *   – Fee details (totalFees, feesPaid, receiptNumber, receiptDate)
+ *   – Mobile numbers  (used as the auth factor — never echo it back)
+ *   – Full address
  *   – Internal DB id and audit timestamps
  *
- * What IS returned is just enough for a student to confirm their own
- * enrolment details (course, batch, status) and see their photo.
+ * Fees ARE included — a student has a legitimate need to see their own
+ * outstanding balance. They authenticated with their own mobile, so this
+ * is their own data.
  */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Schema(description = "Public-safe student record (PII fields excluded)")
+@Schema(description = "Public-safe student record returned after successful self-service lookup")
 public class PublicStudentResponse {
 
     @Schema(description = "Human-readable student ID, e.g. MCA-2026-001")
@@ -37,7 +39,6 @@ public class PublicStudentResponse {
     private String firstName;
     private String middleName;
     private String surname;
-    /** Name as it appears on official documents. */
     private String applicantName;
     private String motherName;
 
@@ -50,16 +51,31 @@ public class PublicStudentResponse {
     private String category;
 
     // ── Course / Admission ────────────────────────────────────────────
+    /** Multi-select list of enrolled courses. */
+    private List<String> courses;
+    /** First enrolled course — backward compatibility. */
     private String course;
     private LocalDate admissionDate;
     private String courseDuration;
     private String batchTime;
 
+    // ── Fees (student's own data — safe to return after mobile auth) ──
+    private BigDecimal totalFees;
+    private BigDecimal feesPaid;
+    private String receiptNumber;
+    private LocalDate receiptDate;
+
+    // ── Exam Form ─────────────────────────────────────────────────────
+    /** "Exam Form Submitted" | "Exam Form Pending" */
+    private String examForm;
+
     // ── Status ────────────────────────────────────────────────────────
     private StudentStatus status;
 
     // ── Photo ─────────────────────────────────────────────────────────
-    /** Base64-encoded photo. Null when no photo has been uploaded. */
+    /** Ready-to-use data: URI — set directly as img src. */
+    private String studentPhotoUrl;
+    /** Base64-encoded photo bytes (kept for backward compat). */
     private String photoData;
     /** MIME type of the uploaded photo, e.g. "image/jpeg". */
     private String photoMimeType;
@@ -80,15 +96,24 @@ public class PublicStudentResponse {
                 .gender(s.getGender())
                 .qualification(s.getQualification())
                 .category(s.getCategory())
+                .courses(s.getCourses())
                 .course(s.getCourse())
                 .admissionDate(s.getAdmissionDate())
                 .courseDuration(s.getCourseDuration())
                 .batchTime(s.getBatchTime())
+                .totalFees(s.getTotalFees())
+                .feesPaid(s.getFeesPaid())
+                .receiptNumber(s.getReceiptNumber())
+                .receiptDate(s.getReceiptDate())
+                .examForm(s.getExamForm())
                 .status(s.getStatus());
 
         if (s.getPhotoData() != null && s.getPhotoData().length > 0) {
-            b.photoData(Base64.getEncoder().encodeToString(s.getPhotoData()));
-            b.photoMimeType(s.getPhotoMimeType());
+            String base64 = Base64.getEncoder().encodeToString(s.getPhotoData());
+            String mime   = s.getPhotoMimeType();
+            b.photoData(base64);
+            b.photoMimeType(mime);
+            b.studentPhotoUrl("data:" + mime + ";base64," + base64);
         }
 
         return b.build();
