@@ -42,4 +42,10 @@ public interface CertificateService {
     CertificateResponse updateCertificate(Long id, UpdateCertificateRequest request, MultipartFile photo);
 
     CertificateResponse updateCertificateStatus(Long id, UpdateCertificateStatusRequest request);
+
+    /**
+     * Permanently deletes a certificate record by internal DB id.
+     * Throws ResourceNotFoundException if the id does not exist.
+     */
+    void deleteCertificate(Long id);
 }

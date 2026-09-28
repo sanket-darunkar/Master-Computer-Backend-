@@ -271,6 +271,20 @@ public class StudentServiceImpl implements StudentService {
     }
 
     // ------------------------------------------------------------------
+    // Delete
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public void deleteStudent(Long id) {
+        if (!studentRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Student not found with id: " + id);
+        }
+        studentRepository.deleteById(id);
+        log.info("Student deleted: id={}", id);
+    }
+
+    // ------------------------------------------------------------------
     // Photo validation (shared logic mirrors CertificateServiceImpl)
     // ------------------------------------------------------------------
 

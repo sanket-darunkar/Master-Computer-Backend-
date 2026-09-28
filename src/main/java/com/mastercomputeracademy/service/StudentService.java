@@ -22,6 +22,12 @@ public interface StudentService {
     StudentResponse updateStudentStatus(Long id, UpdateStudentStatusRequest request);
 
     /**
+     * Permanently deletes a student record by internal DB id.
+     * Throws ResourceNotFoundException if the id does not exist.
+     */
+    void deleteStudent(Long id);
+
+    /**
      * Public lookup by human-readable studentId + mobile verification.
      * Returns a PII-safe response — no Aadhaar, address, or fee data.
      * Throws ResourceNotFoundException if studentId does not exist.

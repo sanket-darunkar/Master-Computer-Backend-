@@ -151,4 +151,18 @@ public class AdminStudentController {
         return ResponseEntity.ok(
                 ApiResponse.success("Student status updated successfully", updated));
     }
+
+    // ------------------------------------------------------------------
+    // Delete
+    // ------------------------------------------------------------------
+
+    @DeleteMapping("/{id}")
+    @Operation(
+        summary = "Delete student",
+        description = "Permanently deletes a student record and all associated data. This action cannot be undone."
+    )
+    public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
+        studentService.deleteStudent(id);
+        return ResponseEntity.noContent().build();
+    }
 }

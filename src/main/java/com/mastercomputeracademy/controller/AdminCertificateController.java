@@ -173,4 +173,18 @@ public class AdminCertificateController {
                 verificationLogService.getVerificationHistory(id, page, size);
         return ResponseEntity.ok(ApiResponse.success("Verification history retrieved", history));
     }
+
+    // ------------------------------------------------------------------
+    // Delete
+    // ------------------------------------------------------------------
+
+    @DeleteMapping("/{id}")
+    @Operation(
+        summary = "Delete certificate",
+        description = "Permanently deletes a certificate record. This action cannot be undone."
+    )
+    public ResponseEntity<Void> deleteCertificate(@PathVariable Long id) {
+        certificateService.deleteCertificate(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -171,6 +171,20 @@ public class CertificateServiceImpl implements CertificateService {
     }
 
     // ------------------------------------------------------------------
+    // Delete
+    // ------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public void deleteCertificate(Long id) {
+        if (!certificateRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Certificate not found with id: " + id);
+        }
+        certificateRepository.deleteById(id);
+        log.info("Certificate deleted: id={}", id);
+    }
+
+    // ------------------------------------------------------------------
     // Photo validation + storage
     // ------------------------------------------------------------------
 
