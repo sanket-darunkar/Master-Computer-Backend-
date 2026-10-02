@@ -162,6 +162,18 @@ public class Student {
     @Column(name = "receipt_date")
     private LocalDate receiptDate;
 
+    /**
+     * Multiple fee installment payments.
+     * Stored as a JSON array in the installments TEXT column.
+     * Each entry: { amountPaid, receiptNumber, receiptDate }
+     * Legacy flat fields (feesPaid, receiptNumber, receiptDate) are kept
+     * for backward compatibility with existing records.
+     */
+    @Convert(converter = InstallmentListConverter.class)
+    @Column(name = "installments", columnDefinition = "TEXT")
+    @Builder.Default
+    private List<InstallmentEntry> installments = new ArrayList<>();
+
     // ── Misc ──────────────────────────────────────────────────────────────
 
     @Column(name = "notes", length = 2000)
@@ -272,8 +284,20 @@ public class Student {
         DROPPED
     }
 
-    // ── JPA converters ────────────────────────────────────────────────────
+    // ── InstallmentEntry ──────────────────────────────────────────────────
 
+    /**
+     * One fee payment installment record.
+     * Not a separate JPA entity — stored as JSON inside the students table.
+     */
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor
+    public static class InstallmentEntry {
+        private String amountPaid;
+        private String receiptNumber;
+        private String receiptDate;
+    }
+
+    // ── JPA converters ────────────────────────────────────────────────────
     /**
      * Converts List<String> ↔ pipe-delimited VARCHAR for the courses_list column.
      * e.g. ["DCA", "Tally"] ↔ "DCA|Tally"
@@ -346,6 +370,67 @@ public class Student {
                 }
             }
             return result;
+        }
+    }
+
+    /**
+     * Converts List<InstallmentEntry> ↔ JSON TEXT column.
+     * Uses simple manual JSON serialisation — no external library required.
+     *
+     * Format: [{"amountPaid":"1000","receiptNumber":"369","receiptDate":"2026-10-01"},...]
+     * Empty list → NULL in DB.
+     */
+    @Converter
+    public static class InstallmentListConverter
+            implements AttributeConverter<List<InstallmentEntry>, String> {
+
+        @Override
+        public String convertToDatabaseColumn(List<InstallmentEntry> list) {
+            if (list == null || list.isEmpty()) return null;
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                InstallmentEntry e = list.get(i);
+                sb.append("{");
+                sb.append("\"amountPaid\":\"").append(safe(e.getAmountPaid())).append("\",");
+                sb.append("\"receiptNumber\":\"").append(safe(e.getReceiptNumber())).append("\",");
+                sb.append("\"receiptDate\":\"").append(safe(e.getReceiptDate())).append("\"");
+                sb.append("}");
+                if (i < list.size() - 1) sb.append(",");
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+
+        @Override
+        public List<InstallmentEntry> convertToEntityAttribute(String dbValue) {
+            List<InstallmentEntry> list = new ArrayList<>();
+            if (dbValue == null || dbValue.isBlank()) return list;
+            String trimmed = dbValue.trim();
+            if (trimmed.startsWith("[")) trimmed = trimmed.substring(1);
+            if (trimmed.endsWith("]"))   trimmed = trimmed.substring(0, trimmed.length() - 1);
+            if (trimmed.isBlank()) return list;
+            String[] objects = trimmed.split("\\},\\{");
+            for (String obj : objects) {
+                obj = obj.replace("{", "").replace("}", "");
+                InstallmentEntry entry = new InstallmentEntry();
+                for (String kv : obj.split(",")) {
+                    String[] pair = kv.split(":", 2);
+                    if (pair.length != 2) continue;
+                    String key = pair[0].trim().replace("\"", "");
+                    String val = pair[1].trim().replace("\"", "");
+                    switch (key) {
+                        case "amountPaid"    -> entry.setAmountPaid(val);
+                        case "receiptNumber" -> entry.setReceiptNumber(val);
+                        case "receiptDate"   -> entry.setReceiptDate(val);
+                    }
+                }
+                list.add(entry);
+            }
+            return list;
+        }
+
+        private String safe(String s) {
+            return s == null ? "" : s.replace("\"", "\\\"");
         }
     }
 }

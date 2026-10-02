@@ -10,6 +10,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import com.mastercomputeracademy.entity.Student.InstallmentEntry;
 
 /**
  * Text fields for updating an existing student record.
@@ -103,6 +104,9 @@ public class UpdateStudentRequest {
     private String receiptNumber;
 
     private LocalDate receiptDate;
+
+    /** Multiple fee installment payments. */
+    private List<InstallmentEntry> installments;
 
     @Size(max = 2000)
     private String notes;

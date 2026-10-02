@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import com.mastercomputeracademy.entity.Student.InstallmentEntry;
 
 /**
  * Student record returned to admin callers.
@@ -72,6 +73,9 @@ public class StudentResponse {
     private BigDecimal feesPaid;
     private String receiptNumber;
     private LocalDate receiptDate;
+
+    /** Multiple fee installment payments. */
+    private List<InstallmentEntry> installments;
 
     private String notes;
     private StudentStatus status;
@@ -142,6 +146,8 @@ public class StudentResponse {
                 .feesPaid(s.getFeesPaid())
                 .receiptNumber(s.getReceiptNumber())
                 .receiptDate(s.getReceiptDate())
+                .installments(s.getInstallments() != null && !s.getInstallments().isEmpty()
+                        ? s.getInstallments() : null)
                 .notes(s.getNotes())
                 .status(s.getStatus())
                 .courseExamStatuses(

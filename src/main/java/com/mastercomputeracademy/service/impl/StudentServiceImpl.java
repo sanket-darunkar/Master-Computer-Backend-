@@ -86,6 +86,7 @@ public class StudentServiceImpl implements StudentService {
                 .notes(request.getNotes())
                 .status(StudentStatus.ACTIVE)
                 .examForm("Exam Form Pending")
+                .installments(request.getInstallments() != null ? request.getInstallments() : new java.util.ArrayList<>())
                 .build();
 
         // Initialise per-course exam statuses — every course starts as Pending
@@ -175,6 +176,9 @@ public class StudentServiceImpl implements StudentService {
         student.setFeesPaid(request.getFeesPaid());
         student.setReceiptNumber(request.getReceiptNumber());
         student.setReceiptDate(request.getReceiptDate());
+        if (request.getInstallments() != null) {
+            student.setInstallments(request.getInstallments());
+        }
         student.setNotes(request.getNotes());
 
         if (request.getStatus() != null) {

@@ -69,6 +69,7 @@ public class PublicStudentResponse {
     private BigDecimal feesPaid;
     private String receiptNumber;
     private LocalDate receiptDate;
+    private List<com.mastercomputeracademy.entity.Student.InstallmentEntry> installments;
 
     // ── Exam Form ─────────────────────────────────────────────────────
     /**
@@ -122,6 +123,8 @@ public class PublicStudentResponse {
                 .feesPaid(s.getFeesPaid())
                 .receiptNumber(s.getReceiptNumber())
                 .receiptDate(s.getReceiptDate())
+                .installments(s.getInstallments() != null && !s.getInstallments().isEmpty()
+                        ? s.getInstallments() : null)
                 .courseExamStatuses(
                         s.getCourseExamStatuses() != null && !s.getCourseExamStatuses().isEmpty()
                                 ? s.getCourseExamStatuses()
